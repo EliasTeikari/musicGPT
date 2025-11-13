@@ -1,0 +1,62 @@
+# Data files (large audio files and tokens)
+data/
+*.wav
+*.mp3
+*.flac
+*.npy
+
+# Model checkpoints and weights
+*.pth
+*.pt
+*.ckpt
+*.pkl
+*.h5
+*.safetensors
+checkpoints/
+models/
+weights/
+
+# Generated outputs
+generated*.wav
+outputs/
+results/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Logs
+*.log
+logs/
+wandb/
+tensorboard/
+
+# Cache
+.cache/
+*.cache
+transformers_cache/
