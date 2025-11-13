@@ -16,6 +16,9 @@ def load_audio(path):
     wav, sr = torchaudio.load(path)
     if sr != 24000:
         wav = torchaudio.functional.resample(wav, sr, 24000)
+    # Convert stereo to mono if needed
+    if wav.shape[0] > 1:
+        wav = wav.mean(dim=0, keepdim=True)  # Average channels to mono
     wav = wav.unsqueeze(0)   # (1, channels, time)
     return wav
 
@@ -26,8 +29,13 @@ for file in tqdm(os.listdir(DATA_DIR)):
     wav = load_audio(os.path.join(DATA_DIR, file))
 
     with torch.no_grad():
-        encoded = model.encode(wav)[0]   # list of tensors, one per codebook
+        encoded_frames = model.encode(wav)  # returns encoded frames tuple
 
-    # Convert to numpy and save
-    codes = [e.cpu().numpy() for e in encoded]
+    # encoded_frames is a tuple: (codes_tensor, None) or just codes_tensor
+    # codes_tensor has shape [B, K, T] where B=batch, K=codebooks, T=timesteps
+    if isinstance(encoded_frames, tuple):
+        codes = encoded_frames[0][0].cpu().numpy()  # [B, K, T] -> [K, T]
+    else:
+        codes = encoded_frames[0].cpu().numpy()  # [B, K, T] -> [K, T]
+
     np.save(os.path.join(OUT_DIR, file.replace(".wav", ".npy")), codes)

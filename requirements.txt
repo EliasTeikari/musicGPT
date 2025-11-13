@@ -4,5 +4,5 @@ transformers
 accelerate
 encodec
 soundfile
-numpy
+numpy<2
 tqdm

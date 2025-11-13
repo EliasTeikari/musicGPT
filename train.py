@@ -18,7 +18,7 @@ class TokenDataset(Dataset):
 
     def __getitem__(self, idx):
         arr = np.load(os.path.join(TOK_DIR, self.files[idx]), allow_pickle=True)
-        # arr = list(codebooks) → choose one codebook for simplicity
+        # arr has shape [K, T] (codebooks, timesteps) → choose first codebook
         tokens = arr[0].astype(np.int64).flatten()
         return torch.tensor(tokens)
 
