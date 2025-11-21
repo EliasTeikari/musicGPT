@@ -27,9 +27,9 @@ The project consists of three main components in a sequential pipeline:
 
 3. **Audio Generation** (`generate.py`): Generates new audio from trained model
    - Loads the trained model from `mini_suno.pth`
-   - Starts with random tokens and autoregressively generates ~500 new tokens
+   - Starts with 32 random tokens and autoregressively generates 500 more tokens
    - Uses argmax sampling (greedy decoding)
-   - Decodes generated tokens back to audio using Encodec
+   - Decodes generated tokens back to audio using Encodec (properly handles multi-codebook structure)
    - Outputs to `generated.wav` at 24kHz
 
 ## Data Flow
@@ -73,10 +73,13 @@ python generate.py
 ## Key Technical Details
 
 - **Device Selection**: All scripts automatically detect and use CUDA if available, otherwise fall back to CPU (defined as `DEVICE` constant)
-- **Codebook Simplification**: Encodec produces multiple codebooks, but this implementation uses only the first codebook (`arr[0]`) to simplify training
+- **Codebook Handling**:
+  - Training: Uses only the first codebook (`arr[0]`) from Encodec to simplify training
+  - Generation: Properly constructs multi-codebook structure for decoding (fills first codebook with generated tokens, zeros for others)
 - **Padding**: Training uses dynamic padding in the collate function to handle variable-length sequences
 - **Token Vocabulary**: Fixed at 1024 tokens to match Encodec's codebook size
 - **Audio Format**: All audio is converted to 24kHz mono during encoding
+- **Encodec Bandwidth**: Set to 6.0 kbps (uses 8 codebooks internally, though only first is used for training)
 
 ## Important Model Configuration
 

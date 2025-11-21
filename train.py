@@ -2,25 +2,46 @@ import os
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
-from transformers import GPT2Config, GPT2LMHeadModel, AdamW
+from transformers import GPT2Config, GPT2LMHeadModel
 from tqdm import tqdm
 
 TOK_DIR = "data/tokens/"
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+# Use MPS on Apple Silicon, CUDA on NVIDIA, otherwise CPU
+if torch.cuda.is_available():
+    DEVICE = "cuda"
+elif torch.backends.mps.is_available():
+    DEVICE = "mps"
+else:
+    DEVICE = "cpu"
 
 # --- Dataset -------------------------------------------------------------
+MAX_SEQ_LEN = 2048  # Must match model's n_positions
+
 class TokenDataset(Dataset):
     def __init__(self):
-        self.files = [f for f in os.listdir(TOK_DIR) if f.endswith(".npy")]
+        self.chunks = []
+        # Load all files and create overlapping chunks for more training data
+        for f in os.listdir(TOK_DIR):
+            if not f.endswith(".npy"):
+                continue
+            arr = np.load(os.path.join(TOK_DIR, f), allow_pickle=True)
+            tokens = arr[0].astype(np.int64).flatten()
+
+            # Create multiple chunks from each file with stride
+            stride = MAX_SEQ_LEN // 2  # 50% overlap
+            for i in range(0, max(1, len(tokens) - MAX_SEQ_LEN + 1), stride):
+                chunk = tokens[i:i + MAX_SEQ_LEN]
+                if len(chunk) >= 512:  # Only use chunks with enough data
+                    self.chunks.append(chunk)
+
+        print(f"Created {len(self.chunks)} training chunks from {len([f for f in os.listdir(TOK_DIR) if f.endswith('.npy')])} files")
 
     def __len__(self):
-        return len(self.files)
+        return len(self.chunks)
 
     def __getitem__(self, idx):
-        arr = np.load(os.path.join(TOK_DIR, self.files[idx]), allow_pickle=True)
-        # arr has shape [K, T] (codebooks, timesteps) → choose first codebook
-        tokens = arr[0].astype(np.int64).flatten()
-        return torch.tensor(tokens)
+        chunk = self.chunks[idx]
+        return torch.tensor(chunk, dtype=torch.long)
 
 def collate(batch):
     # Pad sequences to same length
@@ -30,7 +51,7 @@ def collate(batch):
     return torch.stack(padded), torch.stack(padded)
 
 dataset = TokenDataset()
-loader = DataLoader(dataset, batch_size=2, shuffle=True, collate_fn=collate)
+loader = DataLoader(dataset, batch_size=4, shuffle=True, collate_fn=collate)
 
 # --- Model ---------------------------------------------------------------
 VOCAB_SIZE = 1024      # Encodec has ~1024 tokens per codebook
@@ -43,11 +64,16 @@ config = GPT2Config(
 )
 model = GPT2LMHeadModel(config).to(DEVICE)
 
-optimizer = AdamW(model.parameters(), lr=3e-4)
+optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
 
 # --- Training Loop -------------------------------------------------------
-for epoch in range(10):
-    pbar = tqdm(loader, desc=f"Epoch {epoch}")
+NUM_EPOCHS = 100
+best_loss = float('inf')
+
+for epoch in range(NUM_EPOCHS):
+    total_loss = 0
+    num_batches = 0
+    pbar = tqdm(loader, desc=f"Epoch {epoch+1}/{NUM_EPOCHS}")
     for x, y in pbar:
         x, y = x.to(DEVICE), y.to(DEVICE)
         out = model(x, labels=y)
@@ -57,7 +83,17 @@ for epoch in range(10):
         loss.backward()
         optimizer.step()
 
-        pbar.set_postfix({"loss": loss.item()})
+        total_loss += loss.item()
+        num_batches += 1
+        pbar.set_postfix({"loss": f"{loss.item():.3f}"})
 
-torch.save(model.state_dict(), "mini_suno.pth")
+    avg_loss = total_loss / num_batches
+    print(f"Epoch {epoch+1} avg loss: {avg_loss:.4f}")
+
+    # Save best model
+    if avg_loss < best_loss:
+        best_loss = avg_loss
+        torch.save(model.state_dict(), "mini_suno.pth")
+
+print(f"Training complete. Best loss: {best_loss:.4f}")
 print("Saved model → mini_suno.pth")
